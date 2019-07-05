@@ -25,7 +25,7 @@ fespace Ph(Th,P13d);
 //Ph p,q, pst,deltap;
 
 fespace All(Th,[P1b3d,P1b3d,P1b3d,P13d]);
-All [ux,uy,uz,p],[vx,vy,vz,q], [uxlast,uylast,uzlast,plast], [uxst,uyst,uzst,pst]; 
+All [ux,uy,uz,p],[vx,vy,vz,q], [uxlast,uylast,uzlast,plast], [uxst,uyst,uzst,pst];
 
 real upm, velNorm, delta=1.; // quantities relevant for SD stabilization
 real vsq = 2; // a very small quantity to guarantee minimal stabilization SD
@@ -74,7 +74,7 @@ cout << "done!" << endl;
     include "vtkexportP1bP1.edp";
     velNorm = int3d(Th)((ux)^2 + (uy)^2 + (uz)^2);
     velNorm = sqrt(abs(velNorm));
-    upm = velNorm + vsq; 
+    upm = velNorm + vsq;
 
 
 //plot(p);
@@ -165,18 +165,18 @@ for (int i = 0; i< nmax; i++) {
     t=dt*i;
 	cout<<t<< " " << pulsatility(t)<<endl;
     unsteadyNS;
-    
+
     [uxlast,uylast,uzlast,plast]=[ux,uy,uz,p];
     velNorm = int3d(Th)(abs((ux)^2 + (uy)^2 + (uz)^2));
     velNorm = sqrt(abs(velNorm));
-    upm = velNorm + vsq; 
+    upm = velNorm + vsq;
    if (i % 10 == 0 && i <= nmax) {
     string namefile = "LVAD" + i + ".vtk";
     ofstream kout(namefile);
     include "vtkexportP1bP1.edp";
     }
 }
-   
+
  plot(p);
     plot([ux,uy,uz]);
 
@@ -260,7 +260,7 @@ for (int i = 0; i< (nmax * 2); i++) {
     uzlast=uz;
     velNorm = int3d(Th)((ux)^2 + (uy)^2 + (uz)^2);
     velNorm = sqrt(abs(velNorm));
-    upm = velNorm + vsq; 
+    upm = velNorm + vsq;
     if (i % 10 == 0 && i >= nmax) {
     string namefile = "TCPC" + i + ".vtk";
     //ofstream kout(path+"../visualizations/stokes_updates/" + namefile);
