@@ -1,0 +1,192 @@
+//Unsteady Stokes problem for a TCPC
+// UNITS
+// grams, seconds, centimiters
+
+load "msh3"
+//load "iovtk"
+load "medit"
+load "gmsh"
+
+string path="./";
+
+
+mesh3 Th = gmshload3(path+"aorta_valsalva_bav_top_toro_graft_mod.msh");
+
+verbosity = 1;
+
+real rho = 1.06; // Density (g/cm^3)
+real mu = 0.035; // Dynamic viscosity (g/cm.s)
+real nu = mu/rho; // Kinematic viscosity
+
+real convmmHg = 1333.2; // Convert pressure from mmHg to g/(cm.s)
+
+fespace Uh(Th,P1b3d);
+//Uh ux,uy,uz,vx,vy,vz,uxlast,uylast,uzlast,uxst,uyst,uzst,deltaux,deltauy,deltauz;
+
+fespace Ph(Th,P13d);
+//Ph p,q, pst,deltap;
+
+fespace All(Th,[P1b3d,P1b3d,P1b3d,P13d]);
+All [ux,uy,uz,p],[vx,vy,vz,q], [uxlast,uylast,uzlast,plast], [uxst,uyst,uzst,pst]; 
+
+real upm, velNorm, delta=1.; // quantities relevant for SD stabilization
+real vsq = 2; // a very small quantity to guarantee minimal stabilization SD
+
+real[int] R1=[8550, 21890, 12970, 26190, 27220, 13845]; // Resistances of the 6 outlets
+//real[int] R1=[1.0, 5.0, 5.0, 5.0, 5.0, 0.0]; // Resistances of the 6 outlets
+//real[int] R1=[1000, 1000, 1000, 1000, 1000, 1000]; // Resistances of the 6 outlets
+real R2=10.0; //NOT USED NOW
+
+real[int] op=convmmHg*[95.0,95.0,95.0,95.0,95.0,95.0,105.0]; // Pressure of the 6 outlets and inlet for Steady Stokes
+//real[int] op=convmmHg*[95.0,95.0,95.0,95.0,95.0,95.0,105.0]
+
+macro Div(ux,uy,uz) (dx(ux)+dy(uy)+dz(uz)) //EOM
+macro Grad(u) [dx(u), dy(u), dz(u)] //
+macro Mass(u1, u2, u3) [u1, u2, u3]//
+macro NL(b1,b2,b3,u) (b1*dx(u)+ b2*dy(u)+ b3*dz(u)) //
+
+
+load "UMFPACK64"
+
+problem steadystokes([ux,uy,uz,p],[vx,vy,vz,q],solver=sparsesolver) =
+  int3d(Th) ( nu * (Grad(ux)'*Grad(vx)+Grad(uy)'*Grad(vy)+Grad(uz)'*Grad(vz))
+- q*Div(ux,uy,uz)+ p*Div(vx,vy,vz))
+
+//pressure conditions
+ 	+ int2d(Th,10)(op(6)*(vx*N.x+vy*N.y+vz*N.z))
+//	+ int2d(Th,2)(op(6)*(vx*N.x+vy*N.y+vz*N.z))
+    + int2d(Th,3)(op(0)*(vx*N.x+vy*N.y+vz*N.z))
+    + int2d(Th,4)(op(1)*(vx*N.x+vy*N.y+vz*N.z))
+    + int2d(Th,5)(op(2)*(vx*N.x+vy*N.y+vz*N.z))
+   	+ int2d(Th,6)(op(3)*(vx*N.x+vy*N.y+vz*N.z))
+    + int2d(Th,7)(op(4)*(vx*N.x+vy*N.y+vz*N.z))
+    + int2d(Th,8)(op(5)*(vx*N.x+vy*N.y+vz*N.z))
+//resistances conditions
+    + int2d(Th,3)(R1(0)*(ux*N.x+uy*N.y+uz*N.z)*(vx*N.x+vy*N.y+vz*N.z))
+    + int2d(Th,4)(R1(1)*(ux*N.x+uy*N.y+uz*N.z)*(vx*N.x+vy*N.y+vz*N.z))
+    + int2d(Th,5)(R1(2)*(ux*N.x+uy*N.y+uz*N.z)*(vx*N.x+vy*N.y+vz*N.z))
+    + int2d(Th,6)(R1(3)*(ux*N.x+uy*N.y+uz*N.z)*(vx*N.x+vy*N.y+vz*N.z))
+    + int2d(Th,7)(R1(4)*(ux*N.x+uy*N.y+uz*N.z)*(vx*N.x+vy*N.y+vz*N.z))
+    + int2d(Th,8)(R1(5)*(ux*N.x+uy*N.y+uz*N.z)*(vx*N.x+vy*N.y+vz*N.z))
+//the dirichlet condition for the inflow
+//+ on(10,ux=0.0,uy=-20,uz=0.0)
+//+ on(2,ux=0.0,uy=0.0,uz=40)
++ on(1,ux=0.0,uy=0.0,uz=0.0);
+
+cout << "Initializing with stokes... " << endl;
+steadystokes;
+cout << "done!" << endl;
+  string namefilest = "LVADST" + ".vtk";
+    ofstream kout(namefilest);
+    include "vtkexportP1bP1.edp";
+    velNorm = int3d(Th)((ux)^2 + (uy)^2 + (uz)^2);
+    velNorm = sqrt(abs(velNorm));
+    upm = velNorm + vsq; 
+
+
+plot(p);
+plot([ux,uy,uz]);
+
+[uxst,uyst,uzst,pst]=[ux,uy,uz,p];
+
+/*
+// UNSTEADY PART
+
+real dt=0.01;
+real dti=1./dt;
+int nmax=200;
+
+
+func real pulsatility(real t){
+
+real tfr = 56.0; // corresponds to a volumetric flow rate of 410 cm^3/s as for Oluffsen and Peskin
+real tp = t - floor(t/0.9)*0.9;
+
+if (tp <= 0.3){
+	return tfr * sin(pi * tp / 0.300) + 1;
+}else{
+	return 1;
+}
+
+}
+
+
+real t=0.0;
+
+real fract=0; // fraction o fthe aortic valve that is open
+
+problem unsteadyNS([ux,uy,uz,p],[vx,vy,vz,q], solver=sparsesolver) = //,solver=GMRES,eps=1.e-6) =
+  int3d(Th)(dti*Mass(ux,uy,uz)'*Mass(vx,vy,vz) +
+   nu * (Grad(ux)'*Grad(vx)+Grad(uy)'*Grad(vy)+Grad(uz)'*Grad(vz))
+- q*Div(ux,uy,uz)+ p*Div(vx,vy,vz)
+  + [NL(uxlast,uylast,uzlast,ux),
+     NL(uxlast,uylast,uzlast,uy),NL(uxlast,uylast,uzlast,uz)]'*[vx,vy,vz])
+//pressure conditions
+    + int2d(Th,3)(op(0)*(vx*N.x+vy*N.y+vz*N.z))
+    + int2d(Th,4)(op(1)*(vx*N.x+vy*N.y+vz*N.z))
+    + int2d(Th,5)(op(2)*(vx*N.x+vy*N.y+vz*N.z))
+    + int2d(Th,6)(op(3)*(vx*N.x+vy*N.y+vz*N.z))
+    + int2d(Th,7)(op(4)*(vx*N.x+vy*N.y+vz*N.z))
+    + int2d(Th,8)(op(5)*(vx*N.x+vy*N.y+vz*N.z))
+//resistances conditions
+    + int2d(Th,3)(R1(0)*(ux*N.x+uy*N.y+uz*N.z)*(vx*N.x+vy*N.y+vz*N.z))
+    + int2d(Th,4)(R1(1)*(ux*N.x+uy*N.y+uz*N.z)*(vx*N.x+vy*N.y+vz*N.z))
+    + int2d(Th,5)(R1(2)*(ux*N.x+uy*N.y+uz*N.z)*(vx*N.x+vy*N.y+vz*N.z))
+    + int2d(Th,6)(R1(3)*(ux*N.x+uy*N.y+uz*N.z)*(vx*N.x+vy*N.y+vz*N.z))
+    + int2d(Th,7)(R1(4)*(ux*N.x+uy*N.y+uz*N.z)*(vx*N.x+vy*N.y+vz*N.z))
+    + int2d(Th,8)(R1(5)*(ux*N.x+uy*N.y+uz*N.z)*(vx*N.x+vy*N.y+vz*N.z))
+// Streamline diffusion
+       + int3d(Th)(delta/upm*hTriangle*uxlast*dx(ux)*uxlast*dx(vx)+   // streamline diffusion: next 27 terms
+              delta/upm*hTriangle*uxlast*dx(uy)*uxlast*dx(vy)+
+              delta/upm*hTriangle*uxlast*dx(uz)*uxlast*dx(vz)+
+              delta/upm*hTriangle*uxlast*dx(ux)*uylast*dy(vx)+
+              delta/upm*hTriangle*uxlast*dx(ux)*uzlast*dz(vx)+
+              delta/upm*hTriangle*uxlast*dx(uy)*uylast*dy(vy)+
+              delta/upm*hTriangle*uxlast*dx(uy)*uzlast*dz(vy)+
+              delta/upm*hTriangle*uxlast*dx(uz)*uylast*dy(vz)+
+              delta/upm*hTriangle*uxlast*dx(uz)*uzlast*dz(vz)+
+              delta/upm*hTriangle*uylast*dy(ux)*uxlast*dx(vx)+
+              delta/upm*hTriangle*uylast*dy(uy)*uxlast*dx(vy)+
+              delta/upm*hTriangle*uylast*dy(uz)*uxlast*dx(vz)+
+              delta/upm*hTriangle*uylast*dy(ux)*uylast*dy(vx)+
+              delta/upm*hTriangle*uylast*dy(ux)*uzlast*dz(vx)+
+              delta/upm*hTriangle*uylast*dy(uy)*uylast*dy(vy)+
+              delta/upm*hTriangle*uylast*dy(uy)*uzlast*dz(vy)+
+              delta/upm*hTriangle*uylast*dy(uz)*uylast*dy(vz)+
+              delta/upm*hTriangle*uylast*dy(uz)*uzlast*dz(vz)+
+              delta/upm*hTriangle*uzlast*dz(ux)*uxlast*dx(vx)+
+              delta/upm*hTriangle*uzlast*dz(uy)*uxlast*dx(vy)+
+              delta/upm*hTriangle*uzlast*dz(uz)*uxlast*dx(vz)+
+              delta/upm*hTriangle*uzlast*dz(ux)*uylast*dy(vx)+
+              delta/upm*hTriangle*uzlast*dz(ux)*uzlast*dz(vx)+
+              delta/upm*hTriangle*uzlast*dz(uy)*uylast*dy(vy)+
+              delta/upm*hTriangle*uzlast*dz(uy)*uzlast*dz(vy)+
+              delta/upm*hTriangle*uzlast*dz(uz)*uylast*dy(vz)+
+              delta/upm*hTriangle*uzlast*dz(uz)*uzlast*dz(vz))
+//the dirichlet condition for the inflow
++ on(10,ux=0.0,uy=-(1-fract)*pulsatility(t),uz=0.0)
++ on(2,ux=0.0,uy=0.0,uz=fract*pulsatility(t))
++ on(1,ux=0.0,uy=0.0,uz=0.0);
+
+[uxlast,uylast,uzlast,plast]=[ux,uy,uz,p];
+
+
+for (int i = 0; i< nmax; i++) {
+    t=dt*i;
+	cout<<t<< " " << pulsatility(t)<<endl;
+    unsteadyNS;
+    
+    [uxlast,uylast,uzlast,plast]=[ux,uy,uz,p];
+    velNorm = int3d(Th)(abs((ux)^2 + (uy)^2 + (uz)^2));
+    velNorm = sqrt(abs(velNorm));
+    upm = velNorm + vsq; 
+   if (i % 10 == 0 && i <= nmax) {
+    string namefile = "LVAD" + i + ".vtk";
+    ofstream kout(namefile);
+    include "vtkexportP1bP1.edp";
+    }
+}
+   
+ plot(p);
+    plot([ux,uy,uz]);
+*/
