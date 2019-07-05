@@ -14,7 +14,7 @@ mesh3 Th = gmshload3(path+"aorta_valsava_bav_top_toro_lateral.msh");
 
 verbosity = 1;
 
-real rho = 1.06; // Density (g/cm^3)
+real rho = 6; // Density (g/cm^3)
 real mu = 0.035; // Dynamic viscosity (g/cm.s)
 real nu = mu/rho; // Kinematic viscosity
 
