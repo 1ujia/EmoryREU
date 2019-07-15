@@ -100,7 +100,7 @@ plot([ux,uy,uz]);
 //vort = [dy(uz)-dz(uy),dz(ux)-dx(uz),dx(uy)-dy(ux)];
 vort1 = dy(uz)-dz(uy);
 vort2 = dz(ux)-dx(uz);
-vort3 = dx(uy)-dy(uz);
+vort3 = dx(uy)-dy(ux);
 
 vortMag = sqrt(vort1^2 + vort2^2 + vort3^2);
 
